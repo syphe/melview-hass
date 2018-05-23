@@ -2,7 +2,8 @@ import logging
 import voluptuous as vol
 from . import melview_api
 
-from homeassistant.components.climate import (ClimateDevice, PLATFORM_SCHEMA, SUPPORT_TARGET_TEMPERATURE, SUPPORT_FAN_MODE, SUPPORT_OPERATION_MODE, SUPPORT_SWING_MODE, ATTR_TEMPERATURE)
+from homeassistant.components.climate import (ClimateDevice, PLATFORM_SCHEMA, SUPPORT_TARGET_TEMPERATURE, SUPPORT_FAN_MODE, SUPPORT_OPERATION_MODE, SUPPORT_SWING_MODE, ATTR_TEMPERATURE, STATE_HEAT
+    ,STATE_DRY, STATE_COOL, STATE_FAN_ONLY, STATE_AUTO, STATE_OFF, SUPPORT_ON_OFF)
 from homeassistant.const import (TEMP_CELSIUS, CONF_USERNAME, CONF_PASSWORD)
 from homeassistant.helpers.entity import (Entity)
 import homeassistant.helpers.config_validation as cv
@@ -55,7 +56,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 class MitsubishiHeatpump(ClimateDevice):
     """Representation of a Sensor."""
 
-    def __init__(self, name, unitid, username, passwor, hass):
+    def __init__(self, name, unitid, username, password, hass):
         """Initialize the sensor."""
         self._status = None
         self._state = None
@@ -79,13 +80,24 @@ class MitsubishiHeatpump(ClimateDevice):
     def current_operation(self):
         """Return current operation ie. heat, cool, idle."""
         if self._status:
-            return melview_api.get_mode_name(self._status.setmode)
+            if self._status.setmode == melview_api.MODE_HEAT:
+                return STATE_HEAT
+            elif self._status.setmode == melview_api.MODE_DRY:
+                return STATE_DRY
+            elif self._status.setmode == melview_api.MODE_COOL:
+                return STATE_COOL
+            elif self._status.setmode == melview_api.MODE_FAN:
+                return STATE_FAN_ONLY
+            elif self._status.setmode == melview_api.MODE_AUTO:
+                return STATE_AUTO
+            else:
+                return STATE_OFF
         return None
 
     @property
     def operation_list(self):
         """Return the list of available operation modes."""
-        return melview_api.get_mode_names()
+        return [STATE_HEAT, STATE_DRY, STATE_COOL, STATE_FAN_ONLY, STATE_AUTO]
 
     @property
     def current_temperature(self):
@@ -164,28 +176,61 @@ class MitsubishiHeatpump(ClimateDevice):
 
     def set_fan_mode(self, fan_mode):
         """Set new target fan mode."""
-        raise NotImplementedError()
+        token = self.login()
+        if token:
+            print('send_set_fan: {}'.format(fan_mode))
+            melview_api.send_set_fan(token, self._unitid, fan_mode)
+            print('send_set_fan finished')
 
     def set_operation_mode(self, operation_mode):
         """Set new target operation mode."""
-        raise NotImplementedError()
+        mode = None
+        if operation_mode == STATE_HEAT:
+            mode = melview_api.MODE_HEAT
+        elif operation_mode == STATE_DRY:
+            mode = melview_api.MODE_DRY
+        elif operation_mode == STATE_COOL:
+            mode = melview_api.MODE_COOL
+        elif operation_mode == STATE_FAN_ONLY or operation_mode == STATE_OFF:
+            mode = melview_api.MODE_FAN
+        elif operation_mode == STATE_AUTO:
+            mode = melview_api.MODE_AUTO
+
+        if mode:
+            token = self.login()
+            if token:
+                print('send_set_mode: {}'.format(operation_mode))
+                melview_api.send_set_mode(token, self._unitid, mode)
+                print('send_set_mode finished')
+        else:
+            print('not setting mode as {} is not supported by melview'.format(operation_mode))
 
     def set_swing_mode(self, swing_mode):
         """Set new target swing operation."""
         raise NotImplementedError()
+        #token = self.login()
+        #if token:
+        #    melview_api.
 
     def turn_on(self):
         """Turn device on."""
-        raise NotImplementedError()
+        self.set_power(1)
 
     def turn_off(self):
         """Turn device off."""
-        raise NotImplementedError()
+        self.set_power(0)
+
+    def set_power(self, power):
+        token = self.login()
+        if token:
+            print('send_set_power: {}'.format(power))
+            melview_api.send_set_power(token, self._unitid, power)
+            print('finished send_set_power')
 
     @property
     def supported_features(self):
         """Return the list of supported features."""
-        return SUPPORT_TARGET_TEMPERATURE | SUPPORT_FAN_MODE | SUPPORT_OPERATION_MODE | SUPPORT_SWING_MODE    
+        return SUPPORT_TARGET_TEMPERATURE | SUPPORT_FAN_MODE | SUPPORT_OPERATION_MODE | SUPPORT_SWING_MODE | SUPPORT_ON_OFF
 
     def update(self):
         """Fetch new state data for the sensor.
